@@ -1,13 +1,12 @@
 project:
   type: website
+  output-dir: docs
 
 website:
-  title: "VM0010-starter-template"
+  title: "VM0010 Starter Template"
   navbar:
     left:
       - href: index.qmd
-        text: Home
-      - about.qmd
 
 format:
   html:

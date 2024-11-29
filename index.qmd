@@ -1,11 +1,424 @@
 ---
-title: "VM0010-starter-template"
+title: "VM0010 Starter Template"
+date: 2024-11-05
+author: 
+  - name: Seamus Murphy
+    orcid: 0000-0002-1792-0351 
+    email: seamusrobertmurphy@gmail.com
+    degrees:
+      - PhD
+abstract: > 
+  The following workflow provides a starter script for quantifying 
+  greenhouse gas emissions reduction of projects designed under the
+  [VM0010 VCS Methodology, V1.4](https://verra.org/wp-content/uploads/2024/10/VM0010_IFM_LtPF_v1.4_Clean_10282024.pdf).
+keywords:
+  - REDD+
+  - VCS
+  - Verra
+  - Carbon verification
+format: 
+  html:
+    toc: true
+    toc-location: right
+    toc-title: "**Contents**"
+    toc-depth: 5
+    toc-expand: 4
+    theme: [minimal, ./R/styles.scss]
+highlight-style: github
+bibliography: ./R/references.bib
+df-print: kable
+prefer-html: true
 ---
 
-This is a Quarto website.
+```{r setup}
+#| warning: false
+#| message: false
+#| error: false
+#| include: false
+#| echo: false
 
-To learn more about Quarto websites visit <https://quarto.org/docs/websites>.
+#install.packages("easypackages")
+easypackages::packages(
+  "animation",
+  "BIOMASS",
+  "dataMaid",
+  "dplyr",
+  "extrafont",
+  "htmltools",
+  "janitor",
+  "kableExtra",
+  "knitr",
+  "readxl",
+  "tinytex")
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+  error = TRUE, comment = NA, tidy.opts = list(width.cutoff = 60)) 
+options(htmltools.dir.version = FALSE, htmltools.preserve.raw = FALSE)
+sf::sf_use_s2(use_s2 = FALSE)
+```
+
+```{css, echo=FALSE, class.source = 'foldable'}
+div.column {
+    display: inline-block;
+    vertical-align: top;
+    width: 50%;
+}
+
+#TOC::before {
+  content: "";
+  display: block;
+  height:200px;
+  width: 200px;
+  background-size: contain;
+  background-position: 50% 50%;
+  padding-top: 80px !important;
+  background-repeat: no-repeat;
+}
+```
+
+# 1. Preprocess data
+
+#### Import dummy data {#sec-1.1}
+
+```{r dummy-import}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+
+set.seed(333)
+dataset_raw <- read_excel("./R/assets/dataset_raw.xlsx")
+write.csv(dataset_raw, "./R/assets/dataset_tidy.csv", row.names = FALSE)
+dataset_tidy <- read.csv("./R/assets/dataset_tidy.csv")
+dataset_tidy |> kbl() |> kable_styling()
+```
+
+#### Review dummy data {#sec-1.2}
+
+```{r dummy-audit}
+#| warning: false
+#| message: false
+#| error: false
+#| eval: false
+#| echo: true
+
+str(dataset_tidy)
+dplyr::count(dataset_tidy, Species..j.)
+
+saveHTML(dataMaid::makeDataReport(
+  dataset_tidy,
+  output = "html",
+  codebook = TRUE,
+  onlyProblematic = TRUE,
+  visuals = setVisuals(all = "basicVisual"),
+  replace = TRUE
+  )
+) # output "dataMaid_dataset_tidy.html" shown in Appendix A.1
+```
+
+```{r dummy-audit-quiet}
+#| warning: false
+#| message: false
+#| error: false
+#| eval: true
+#| echo: false
+
+str(dataset_tidy)
+dplyr::count(dataset_tidy, Species..j.)
+```
+
+#### Tidy dummy data {#sec-1.3}
+
+Clean dataset and relabel to match [VM0010 Verra Methodology](https://verra.org/wp-content/uploads/2018/03/VM0010-Methodology-for-IMF-LtPF-v1.3_0.pdf) and [Tidyverse style guide](https://style.tidyverse.org/)
+
+```{r dummy-audit-tidy}
+#| warning: false
+#| message: false
+#| error: false
+#| eval: true
+#| echo: true
+
+data.table::setnames(dataset_tidy, old = "Stratum...i.", new = "stratum_i", skip_absent = TRUE)
+data.table::setnames(dataset_tidy, old = "Species..j.", new = "species_j", skip_absent = TRUE)
+data.table::setnames(dataset_tidy, old = "Plot..sp.", new = "plot_sp", skip_absent = TRUE)
+data.table::setnames(dataset_tidy, old = "Tree..l.", new = "tree_l", skip_absent = TRUE)
+data.table::setnames(dataset_tidy, old = "Volume..V_.l.j.I.sp..", new = "volume", skip_absent = TRUE)
+dataset_tidy$species_j[dataset_tidy$species_j == "sp4"] <- "Sp4"
+dataset_tidy$species_j  = as.factor(dataset_tidy$species_j)
+dataset_tidy$stratum_i  = as.factor(dataset_tidy$stratum_i)
+```
+
+Compute new variables & save copy of cleaned `dataset_tidy.csv`
+
+```{r dummy-audit-save}
+#| warning: false
+#| message: false
+#| error: false
+#| eval: true
+#| echo: true
+
+dataset_tidy$bcef_r     = 0.7
+dataset_tidy$cf         = 0.5
+dataset_tidy$d          = 0.5
+dataset_tidy$a_sp       = 0.1
+dataset_tidy$a_sp_m2    = dataset_tidy$a_sp * 10000
+
+dataset_tidy = dataset_tidy %>%
+  group_by(stratum_i) %>%
+  mutate(a_I_m2 = sum(a_sp_m2), a_I_ha = sum(a_sp)) 
+
+write.csv(dataset_tidy, "./R/assets/dataset_tidy.csv", row.names = FALSE)
+dataset_tidy |> kbl() |> kable_styling()
+```
+
+# 2. Compute Equations
+
+Note all four equations that follow derive estimates according to specific species, whether measured at the plot level, stratum or globally.
+Hence, caution is advised when computing initial, absolute estimates and when deriving or applying hectare expansion factors.
+
+On page 19 of [VM0010 Methodology](https://verra.org/wp-content/uploads/2024/10/VM0010_IFM_LtPF_v1.4_Clean_10282024.pdf), 'equation 1' calculates merchantable timber volume in cubic meters using the following:
+
+#### EQ1: Plot biomass
+
+$$V_{j,i|sp} = \sum_{l = 1}^{L} V_{l,j,i,sp}$$
+
+where $V_{j,i|sp}$ refers to the sum of merchantable volume of species *j* from plot *sp* in stratum *i,* as computed in the following.
+
+```{r eq1}
+#| warning: false
+#| message: false
+#| error: false
+#| eval: true
+#| echo: true
+
+dataset_tidy = dataset_tidy |>
+  group_by(species_j, stratum_i, plot_sp) |>
+  mutate(vji_sp_m3 = sum(volume))
+
+# compute new variable 'vji_sp_m3'
+data.table::setDT(dataset_tidy)[, .(
+  vji_sp_m3 = sum(volume)
+  ),
+  by = .(stratum_i, plot_sp, species_j)
+] |> kbl() |> kable_styling()
+```
+
+#### EQ2: Strata biomass
+
+On page 19 of the VM0010 Methodology, 'equation 2' provides calculation of merchantable timber volume of a species at the stratum level:
+
+$$V_{j,i|BSL} = \displaystyle \frac{1}{SP} \sum_{sp=1}^{sp} \displaystyle \frac{V_{j,i,sp}}{A_{sp}}$$
+
+where $V_{j,i|BSL}$ refers to the [***mean***]{.underline} merchantable timber volume of species *j* measured across all plots within stratum *i* in the baseline scenario.
+Volume estimates are derived in terms of m^3^/ha^-1^ using an expansion factor derived as the ratio of plot area 1,000m^2^ to 10,000m^2^, as follows.
+
+```{r eq2}
+#| warning: false
+#| message: false
+#| error: false
+#| eval: true
+#| echo: true
+
+dataset_tidy = dataset_tidy |>
+  group_by(stratum_i, species_j) |>
+  mutate(vji_ha_m3 = mean(vji_sp_m3) * 10)
+
+data.table::setDT(dataset_tidy)[, .(
+  vji_sp_m3,
+  vji_ha_m3
+  ),
+  by = .(stratum_i, species_j)
+] |> kbl() |> kable_styling()
+```
+
+#### EQ3: Harvest carbon
+
+On page 20 of the VM0010 Methodology, 'equation 3' provides calculation of carbon stock of harvested timber volumes for species *i* in stratum *i*.
+
+In the absence of harvest plan data, carbon stocks of commercial timber will be derived from the full inventory `dataset_tidy`.
+
+This differs to 'equation 3' below, which measures mean carbon stock from volumes of 'harvested biomass' $C_{HB,j,i|BSL}$ comprised of volumes estimates from extracted timber that is destined off-site for market sales, in addition to volume estimates from extracted timber that is remaining on-site due to damage or use during site operations and road construction.
+The difference in destinations of these carbon stocks means that alternative carbon factors must be applied in their calculation, as indicated in following two equations
+
+$$C_{HB,j,i|BSL} = (V_{EX,j,i|BSL} + V_{EX,INF,j,i|BSL} ) * BCEF_{R} * CF_{j}$$
+
+Carbon estimates are calculated in units of metric tons per hectare (tC/ha^-1^) by multiplying mean volume per hectare of extracted timber of species *i* from stratum *j* by the carbon fraction $CF$ (default = 0.5) and biomass conversion and expansion factor $BCEF_{R}$ of that species.
+If needed, VM0010 methoodology provides guidance on approriate literature source for defining CF with prioritiy of local forest types over national and regional forest types, over forest types from neighboring countries.
+However, if defaulting to global forest type values, recommendations point to chapter four of [@krey1Chapter4] that cite value of 1.11.
+We rely on the provided value of 0.7.
+
+```{r eq3}
+#| warning: false
+#| message: false
+#| error: false
+#| eval: true
+#| echo: true
+
+
+dataset_tidy <- dataset_tidy %>%
+  mutate(chb_ha_tC = vji_ha_m3 * bcef_r * cf)
+
+data.table::setDT(dataset_tidy)[, .(
+  vji_sp_m3,
+  vji_ha_m3,
+  chb_ha_tC
+  ),
+  by = .(stratum_i, species_j)
+] |> kbl() |> kable_styling()
+```
+
+#### EQ4: Extracted carbon
+
+"Not all of the harvested biomass leaves the forest because the timber harvested has two components: 1) wood removed to market (extracted timber) and 2) wood remaining in the forest as a result of harvest" (VM0010, 2024:21).
+
+To account for all harvest removals, 'equation 4' computes mean carbon of species *i* in stratum *j* by adding mean timber to market ($V_{EX,j,i|BSL}$) and mean timber used in harvest infrastructure ($V_{EX,INF,j,i|BSL}$).
+This sum is then multiplied by the wood density $D$ and carbon fraction $CF$ of that species and reported in units of tC.ha^-1^ using the following formula:
+
+$$C_{EX,j,i|BSL} = (V_{EX,j,i|BSL} + V_{EX,INF,j,i|BSL} ) * D_{j} * CF_{j}$$
+
+```{r eq4}
+#| warning: false
+#| message: false
+#| error: false
+#| eval: true
+#| echo: true
+
+dataset_tidy <- dataset_tidy %>%
+  mutate(cex_ha_tC = vji_ha_m3 * d * cf)
+
+data.table::setDT(dataset_tidy)[, .(
+  vji_sp_m3,
+  vji_ha_m3,
+  chb_ha_tC,
+  cex_ha_tC
+  ),
+  by = .(stratum_i, species_j)
+] |> kbl() |> kable_styling()
+```
+
+#### EQ5: Slash carbon
+
+$$∆C_{DWSLASH_,i,p|BSL} = \sum_{i=1}^{j} \space [C_{HB,j,i|BSL} - C_{EX,j,i|BSL} + C_{RSD,j,i|BSL} + C_{notHB,inf,j,i|BSL}]$$
+
+Equation 5 computes carbon change produced by slash as "the difference between the total carbon stock of the harvested biomass and the carbon stock of the extracted timber, plus the residual stand damage and biomass of trees left to decay as a result forestry infrastructure establishment".
+Specifically, values of $C_{notHB,inf,j,i|BSL}$ are computed by applying a fractional value of timber used in harvesting infrastructure development ($F_{V,INF,HWP}$), which may be provided by project proponent, and if missing will be conservatively assumed as 0.0%.
+
+#### EQ6: Damaged carbon
+
+$C_{RSD,j,i\|BSL}$ is defined in units of tC·ha^-1^ as mean carbon change from residual stand damage as computed in the following:
+
+$$C_{RSD,j,i\|BSL} = C_{EX,j,i|BSL} \times F_{RSD|BSL}$$ where $F_{RSD|BSL}$ represents a dimensionless value for the factor of "residual stand damage" per species in that area.
+On page 56 of the VM0010 document, an example reference is cited for sourcing residual stand damage values [@winjum1998].
+We apply the reported value of Congo operations of 1.74 t compute the following:
+
+```{r eq6}
+#| warning: false
+#| message: false
+#| error: false
+#| eval: true
+#| echo: true
+
+dataset_tidy = dataset_tidy %>%
+  mutate(f_rsd = 1.74)
+
+dataset_tidy = dataset_tidy %>%
+  mutate(c_rsd = cex_ha_tC * f_rsd)
+
+data.table::setDT(dataset_tidy)[, .(
+  vji_sp_m3,
+  vji_ha_m3,
+  chb_ha_tC,
+  c_rsd
+  ),
+  by = .(stratum_i, species_j)
+] |> kbl() |> kable_styling()
+```
+
+#### EQ7: Undamaged carbon
+
+Equation 7 computes mean carbon volume of biomass that was **not** extracted during the construction of harvest infrastructure as follows:
+
+$$C_{notHB,inf,j,i|BSL} = V_{notEX,inf,j,i|BSL} \times BCEF_R \times CF_j$$
+
+#### EQ8: Wood products
+
+Sampling criteria indicate that carbon of wood products is quantified in terms of its volume at time of harvest, while applying conversion factors provided in Winjum et al [(1998)](https://academic.oup.com/forestscience/article/44/2/272/4626952):
+
+$$C_{EX,i|BSL} = \sum_{j=1}^{J} C_{EX,j,i|BSL}$$
+
+At this stage, It is advised to assign gross percentages of volume extracted to wood product classes on the basis of local expert knowledge of harvest activities and markets.
+Wood product classes may include `sawnwood`, `panels`, `roundwood`, `paper`, etc.
+In addition, the amount of carbon stored in wood products that would decay within three years after harvest are assumed to be emitted at the time of harvest
+
+#### EQ9: HWP carbon loss ^year-0^
+
+Equation 9 calculates mean carbon immediately emmited from harvested volumes at the time of harvest, as follows:
+
+$$
+∆C_{WP0,i|BSL} = \sum  \space (C_{EX,i,k|BSL} \times WW_k + SLF_k)
+$$
+
+where input variables $SLF_f$ and $WW_k$ are derived as the fraction of carbon immediately emitted from specific short-lived wood products, and the fraction of carbon immediately emitted from wood waste, respectively.
+
+#### EQ10: HWP carbon store
+
+Alternatively, equation 10 computes mean carbon not immediately emitted from harvest volumes at the time of harvest (year=0), as follows:
+
+$$
+C_{WP,i|BSL} = \sum \space (C_{EX,i,k|BSL} - ∆C_{WP0,i|BSL})
+$$
+
+#### EQ11: HWP carbon loss ^year-100^
+
+Equation 11 computes carbon stored in wood products that are assumed to be retired between 3 - 100 years after harvest from stratum i in land parcel *p* (tC ha^-1^), where $OF_k$ provides the fraction of biomass carbon for wood product type *k* that is assumed to be emitted to the atmosphere between 3 and 100 years of timber harvest.
+@winjum1998 gives annual oxidation fractions for each class of wood products split by forest region (boreal, temperate and tropical), which is estimated to provide the fraction of carbon that is oxidized between the 3rd and the 100th year after initial harvest, as follows:
+
+$$
+∆C_{WP100,i,p|BSL} = \sum \space (C_{WP,i|BSL} \times OF_k)
+$$
+
+where $OF_k$ is defined in VM0010 documentation as the fraction of biomass carbon per product type *`k`* that is emitted to atmosphere in 100 years following timber harvest:
+
+![](R/assets/OF-VM0010.png){fig-align="center" width="500"}
+
+#### EQ12: Fuel emissions
+
+Total fuel emissions are derived from all sources presented in Table 2 on page 12 of \[VM0010\](<https://verra.org/wp-content/uploads/2024/10/VM0010_IFM_LtPF_v1.4_Clean_10282024.pdf>).
+Specific emissions variables are defined in subsequent equations:
+
+$$C_{FUEL} = \frac{E_{HARVEST} + E_{HAULING} + E_{TRANSPORT} + E_{PROCESSING}} {\frac{44}{12}}$$
+
+#### EQ13: Harvesting fuel emissions
+
+$$
+E_{HARVEST} = FC_{HARVEST} \times EF_{FUEL} \times \sum_{j,i,p} \space V_{EX,j,i|BSL} \times A_i
+$$
+
+where $FC_{HARVEST}$ derives volume of fuel consumed by harvest operators per m^3^ of extracted log (kL/m^-3^) and $EF_{FUEL}$ represents a fuel emission factor (tCO2~e~ kL^-1^).
+These input variables must be derived through the common practice pathway method.
+The following sources of information are permitted for this: • Data from other forest management companies in the region; or • Data from peer reviewed literature (or published by government agency)
+
+#### EQ14: Hauling fuel emissions
+
+$$
+E_{HAULING} = FC_{HAULING} \times EF_{FUEL} \times V{EX,j,i|BSL} \times A_i
+$$
+
+#### EQ15: Transport fuel emissions
+
+$$
+N_{TRUCKS-TRANSPORT} = \frac{\sum_{j,i} V_{EX,j,i|BSL} \times A_i}{CAP_{TRUCK}}$$
+
+# Appendix
+
+### A.1 DataMaid audit
 
 ```{r}
-1 + 1
+#| eval: false
+htmltools::includeHTML("dataMaid_dataset_tidy.html")
+```
+
+![](R/assets/dataMaid_dataset_tidy.png)
+
+```{r}
+devtools::session_info()
 ```
