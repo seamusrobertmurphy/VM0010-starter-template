@@ -1,0 +1,1 @@
+# VM0010-starter-template
