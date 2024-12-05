@@ -6,7 +6,7 @@ website:
   title: "VM0010 Starter Template"
   navbar:
     left:
-      - href: index.qmd
+      - href: VM0010-starter-template.qmd
 
 format:
   html:

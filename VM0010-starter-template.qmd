@@ -417,8 +417,13 @@ N_{TRUCKS-TRANSPORT} = \frac{\sum_{j,i} V_{EX,j,i|BSL} \times A_i}{CAP_{TRUCK}}$
 htmltools::includeHTML("dataMaid_dataset_tidy.html")
 ```
 
-![](R/assets/dataMaid_dataset_tidy.png)
+![](assets/dataMaid_dataset_tidy.png)
 
 ```{r}
+
+# convert markdown to script.R 
+knitr::purl("VM0010-starter-template.qmd")
+
+# display environment setup
 devtools::session_info()
 ```
