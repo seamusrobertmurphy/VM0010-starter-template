@@ -3,7 +3,7 @@ project:
   output-dir: docs
 
 website:
-  title: "VM0010 Starter Template"
+  title: "VM0010"
   navbar:
     left:
       - href: VM0010-starter-template.qmd
