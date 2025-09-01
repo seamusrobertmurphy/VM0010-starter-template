@@ -378,7 +378,7 @@ where $OF_k$ is defined in VM0010 documentation as the fraction of biomass carbo
 
 #### EQ12: Fuel emissions
 
-Total fuel emissions are derived from all sources presented in Table 2 on page 12 of \[VM0010\](<https://verra.org/wp-content/uploads/2024/10/VM0010_IFM_LtPF_v1.4_Clean_10282024.pdf>). Specific emissions variables are defined in subsequent equations:
+Total fuel emissions are derived from all sources presented in Table 2 on page 12 of [VM0010](https://verra.org/wp-content/uploads/2024/10/VM0010_IFM_LtPF_v1.4_Clean_10282024.pdf). Specific emissions variables are defined in subsequent equations:
 
 $$C_{FUEL} = \frac{E_{HARVEST} + E_{HAULING} + E_{TRANSPORT} + E_{PROCESSING}} {\frac{44}{12}}$$
 
